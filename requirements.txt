@@ -1,0 +1,7 @@
+streamlit==1.29.0
+pydantic==2.5.2
+langchain==0.0.350
+langchain-google-genai==0.0.5
+PyMuPDF==1.23.8
+python-dotenv==1.0.0
+typing-extensions==4.9.0
