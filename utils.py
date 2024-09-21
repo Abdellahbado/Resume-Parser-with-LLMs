@@ -6,16 +6,122 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.prompts import PromptTemplate
 from langchain.output_parsers import PydanticOutputParser
 import fitz
+import pytesseract
+from PIL import Image
+import io
+import numpy as np
+import cv2
+from deskew import determine_skew
+from langdetect import detect
+from langdetect.lang_detect_exception import LangDetectException
 
+# def extract_text_from_pdf(pdf_path):
+#     doc = fitz.open(pdf_path)
+#     text = ""
+
+#     for page_num in range(len(doc)):
+#         page = doc.load_page(page_num)
+        
+#         # Try to extract text directly first if it is digitally born pdf
+#         page_text = page.get_text()
+        
+        
+#         # If no text is found, use OCR if it is scanned pdf
+#         if not page_text.strip():
+#             print('Using OCR...')
+            
+#             pix = page.get_pixmap()
+#             img = Image.open(io.BytesIO(pix.tobytes()))
+#             page_text = pytesseract.image_to_string(img)
+        
+#         text += page_text + "\n"
+        
+#         print(text)
+#     return text
+
+def preprocess_image(image):
+    # Convert PIL Image to OpenCV format
+    img = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
+    
+    # Convert to grayscale
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    
+    # Deskew
+    angle = determine_skew(gray)
+    rotated = rotate_image(gray, angle)
+    
+    # Binarization
+    thresh = cv2.threshold(rotated, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
+    
+    # Noise removal
+    denoised = cv2.fastNlMeansDenoising(thresh, None, 10, 7, 21)
+    
+    return Image.fromarray(denoised)
+
+def rotate_image(image, angle):
+    (h, w) = image.shape[:2]
+    center = (w // 2, h // 2)
+    M = cv2.getRotationMatrix2D(center, angle, 1.0)
+    rotated = cv2.warpAffine(image, M, (w, h), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
+    return rotated
+
+def detect_language(text):
+    try:
+        lang = detect(text)
+        if lang == 'ar':
+            return 'ara'
+        elif lang == 'fr':
+            return 'fra'
+        else:
+            return 'eng'  # Default to English for other languages
+    except LangDetectException:
+        return 'eng'  # Default to English if detection fails
 
 def extract_text_from_pdf(pdf_path):
     doc = fitz.open(pdf_path)
     text = ""
-    for page in doc:
-        text += page.get_text()
 
-    print(text)
-    return text
+    for page_num in range(len(doc)):
+        page = doc.load_page(page_num)
+        
+        # Try to extract text directly first (for original PDFs)
+        page_text = page.get_text()
+        
+        # If no text is found or very little text, use OCR (for scanned PDFs)
+        if len(page_text.strip()) < 50:  # Adjust this threshold as needed
+            print(f'Using OCR for page {page_num + 1}...')
+            
+            # Render page to an image
+            pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))  # Increase resolution
+            img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+            
+            # Preprocess the image
+            preprocessed_img = preprocess_image(img)
+            
+            # First, try OCR with all languages
+            initial_text = pytesseract.image_to_string(
+                preprocessed_img,
+                config='--oem 3 --psm 6 -l eng+ara+fra'
+            )
+            
+            # Detect the language from the initial OCR result
+            detected_lang = detect_language(initial_text)
+            
+            # Perform OCR again with the detected language
+            page_text = pytesseract.image_to_string(
+                preprocessed_img,
+                config=f'--oem 3 --psm 6 -l {detected_lang}'
+            )
+            
+            print(f'Detected language: {detected_lang}')
+        else:
+            print(f'Extracting text directly from page {page_num + 1}...')
+            detected_lang = detect_language(page_text)
+            print(f'Detected language: {detected_lang}')
+        
+        text += page_text + "\n\n"  # Add extra newline for page separation
+        
+    return text.strip()
 
 
 def validate_and_clean_resume_data(resume_data: ResumeData) -> ResumeData:
@@ -137,18 +243,26 @@ def parse_resume(pdf_path):
 
     prompt = PromptTemplate(
         template=(
-            "You are an expert at parsing resumes. Extract the following structured information "
-            "from the given resume text in the same language as the resume. "
-            "You must extract only real, specific information about the individual. "
-            "Ignore any generic placeholder text or template information. "
-            "If certain information is missing or unclear, return null for that field.\n"
-            "You must extract:\n"
+            "You are an expert at parsing resumes, capable of handling both well-structured digital PDFs "
+            "and potentially disorganized text from scanned PDFs processed by OCR. Extract the following "
+            "structured information from the given resume text in the same language as the resume.\n\n"
+            "Important guidelines:\n"
+            "1. Extract only real, specific information about the individual.\n"
+            "2. Ignore any generic placeholder text or template information.\n"
+            "3. If certain information is missing, unclear, or can't be confidently determined, return null for that field.\n"
+            "4. The order of information might not be preserved in scanned PDFs. Look for relevant information throughout the entire text.\n"
+            "5. Be prepared to handle inconsistent formatting, potential OCR errors, and fragmented text.\n"
+            "6. Use context clues to determine the correct category for each piece of information.\n\n"
+            "Extract the following:\n"
             "1. Name (only the actual name of the individual, not any placeholder)\n"
             "2. Contact Information (only real contact details, not generic placeholders)\n"
             "3. Skills (only skills specifically mentioned for this individual)\n"
-            "4. Work Experience (with details for each job such as role, company, dates)\n"
-            "5. Education (degree, institution, dates)\n"
-            "6. Languages spoken (return null if no languages are specifically mentioned)\n"
+            "4. Work Experience (with details for each job such as role, company, dates if available)\n"
+            "5. Education (degree, institution, dates if available)\n"
+            "6. Languages spoken (return null if no languages are specifically mentioned)\n\n"
+            "For Work Experience and Education:\n"
+            "- If dates are unclear or in an unusual format, interpret them as best as possible or omit if too ambiguous.\n"
+            "- If the order of jobs or education entries is unclear, arrange them in the most logical order based on available information.\n\n"
             "Ensure that the extracted data follows this exact format: {format_instructions}\n\n"
             "Resume Text:\n{resume_text}\n\n"
             "Respond in JSON format."

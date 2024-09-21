@@ -4,11 +4,12 @@ import os
 from dotenv import load_dotenv
 from models import ResumeData
 
+
 def main():
     st.set_page_config(page_title="Resume Parser", page_icon="📄", layout="wide")
 
     st.title("📄 Resume Parser")
-    st.write("Upload a PDF resume to extract key information.")
+    st.write("Upload a PDF resume (regular or scanned) to extract key information.")
 
     uploaded_file = st.file_uploader("Choose a PDF file", type="pdf")
 
