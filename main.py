@@ -34,7 +34,8 @@ def main():
 
             if resume_data.contact_information:
                 if resume_data.contact_information.email:
-                    st.write(f"📧 Email: {resume_data.contact_information.email}")
+                    email = resume_data.contact_information.email
+                    st.markdown(f"📧 Email: [{email}](mailto:{email})")
                 if resume_data.contact_information.phone_number:
                     st.write(
                         f"📞 Phone: {resume_data.contact_information.phone_number}"

@@ -15,30 +15,6 @@ from deskew import determine_skew
 from langdetect import detect
 from langdetect.lang_detect_exception import LangDetectException
 
-# def extract_text_from_pdf(pdf_path):
-#     doc = fitz.open(pdf_path)
-#     text = ""
-
-#     for page_num in range(len(doc)):
-#         page = doc.load_page(page_num)
-        
-#         # Try to extract text directly first if it is digitally born pdf
-#         page_text = page.get_text()
-        
-        
-#         # If no text is found, use OCR if it is scanned pdf
-#         if not page_text.strip():
-#             print('Using OCR...')
-            
-#             pix = page.get_pixmap()
-#             img = Image.open(io.BytesIO(pix.tobytes()))
-#             page_text = pytesseract.image_to_string(img)
-        
-#         text += page_text + "\n"
-        
-#         print(text)
-#     return text
-
 def preprocess_image(image):
     # Convert PIL Image to OpenCV format
     img = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
@@ -73,9 +49,9 @@ def detect_language(text):
         elif lang == 'fr':
             return 'fra'
         else:
-            return 'eng'  # Default to English for other languages
+            return 'eng'  
     except LangDetectException:
-        return 'eng'  # Default to English if detection fails
+        return 'eng'  
 
 def extract_text_from_pdf(pdf_path):
     doc = fitz.open(pdf_path)
@@ -84,30 +60,23 @@ def extract_text_from_pdf(pdf_path):
     for page_num in range(len(doc)):
         page = doc.load_page(page_num)
         
-        # Try to extract text directly first (for original PDFs)
         page_text = page.get_text()
         
-        # If no text is found or very little text, use OCR (for scanned PDFs)
         if len(page_text.strip()) < 50:  # Adjust this threshold as needed
             print(f'Using OCR for page {page_num + 1}...')
             
-            # Render page to an image
             pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))  # Increase resolution
             img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
             
-            # Preprocess the image
             preprocessed_img = preprocess_image(img)
             
-            # First, try OCR with all languages
             initial_text = pytesseract.image_to_string(
                 preprocessed_img,
                 config='--oem 3 --psm 6 -l eng+ara+fra'
             )
             
-            # Detect the language from the initial OCR result
             detected_lang = detect_language(initial_text)
             
-            # Perform OCR again with the detected language
             page_text = pytesseract.image_to_string(
                 preprocessed_img,
                 config=f'--oem 3 --psm 6 -l {detected_lang}'
@@ -119,7 +88,7 @@ def extract_text_from_pdf(pdf_path):
             detected_lang = detect_language(page_text)
             print(f'Detected language: {detected_lang}')
         
-        text += page_text + "\n\n"  # Add extra newline for page separation
+        text += page_text + "\n\n"  
         
     return text.strip()
 
