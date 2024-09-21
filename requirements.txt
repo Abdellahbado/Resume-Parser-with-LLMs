@@ -5,7 +5,7 @@ pymupdf
 pytesseract
 pillow
 numpy
-opencv-python
+opencv-python-headless==4.5.3.56
 deskew
 langdetect
 streamlit
