@@ -2,11 +2,11 @@ pydantic
 langchain-google-genai
 langchain
 pymupdf
-pytesseract
 pillow
 numpy
 opencv-python-headless==4.8.1.78
 deskew
 langdetect
 streamlit
+pytesseract
 python-dotenv

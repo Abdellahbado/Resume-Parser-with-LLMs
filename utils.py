@@ -14,44 +14,51 @@ import cv2
 from deskew import determine_skew
 from langdetect import detect
 from langdetect.lang_detect_exception import LangDetectException
+import easyocr
+
 
 def preprocess_image(image):
     # Convert PIL Image to OpenCV format
     img = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
-    
+
     # Convert to grayscale
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    
+
     # Deskew
     angle = determine_skew(gray)
     rotated = rotate_image(gray, angle)
-    
+
     # Binarization
     thresh = cv2.threshold(rotated, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
-    
+
     # Noise removal
     denoised = cv2.fastNlMeansDenoising(thresh, None, 10, 7, 21)
-    
+
     return Image.fromarray(denoised)
+
 
 def rotate_image(image, angle):
     (h, w) = image.shape[:2]
     center = (w // 2, h // 2)
     M = cv2.getRotationMatrix2D(center, angle, 1.0)
-    rotated = cv2.warpAffine(image, M, (w, h), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
+    rotated = cv2.warpAffine(
+        image, M, (w, h), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE
+    )
     return rotated
+
 
 def detect_language(text):
     try:
         lang = detect(text)
-        if lang == 'ar':
-            return 'ara'
-        elif lang == 'fr':
-            return 'fra'
+        if lang == "ar":
+            return "ara"
+        elif lang == "fr":
+            return "fra"
         else:
-            return 'eng'  
+            return "eng"
     except LangDetectException:
-        return 'eng'  
+        return "eng"
+
 
 def extract_text_from_pdf(pdf_path):
     doc = fitz.open(pdf_path)
@@ -59,40 +66,74 @@ def extract_text_from_pdf(pdf_path):
 
     for page_num in range(len(doc)):
         page = doc.load_page(page_num)
-        
+
         page_text = page.get_text()
-        
+
         if len(page_text.strip()) < 50:  # Adjust this threshold as needed
-            print(f'Using OCR for page {page_num + 1}...')
-            
+            print(f"Using OCR for page {page_num + 1}...")
+
             pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))  # Increase resolution
             img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-            
+
             preprocessed_img = preprocess_image(img)
-            
+
             initial_text = pytesseract.image_to_string(
-                preprocessed_img,
-                config='--oem 3 --psm 6 -l eng+ara+fra'
+                preprocessed_img, config="--oem 3 --psm 6 -l eng+ara+fra"
             )
-            
+
             detected_lang = detect_language(initial_text)
-            
+
             page_text = pytesseract.image_to_string(
-                preprocessed_img,
-                config=f'--oem 3 --psm 6 -l {detected_lang}'
+                preprocessed_img, config=f"--oem 3 --psm 6 -l {detected_lang}"
             )
-            
-            print(f'Detected language: {detected_lang}')
+
+            print(f"Detected language: {detected_lang}")
         else:
-            print(f'Extracting text directly from page {page_num + 1}...')
+            print(f"Extracting text directly from page {page_num + 1}...")
             detected_lang = detect_language(page_text)
-            print(f'Detected language: {detected_lang}')
-        
-        text += page_text + "\n\n"  
-        
+            print(f"Detected language: {detected_lang}")
+
+        text += page_text + "\n\n"
+
     return text.strip()
 
 
+def extract_text_from_pdf_cloud(pdf_path):
+    doc = fitz.open(pdf_path)
+    text = ""
+
+    for page_num in range(len(doc)):
+        page = doc.load_page(page_num)
+
+        page_text = page.get_text()
+
+        if len(page_text.strip()) < 50:  # Adjust this threshold as needed
+            print(f"Using OCR for page {page_num + 1}...")
+
+            pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))  # Increase resolution
+            img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+
+            preprocessed_img = preprocess_image(img)
+
+            initial_text = pytesseract.image_to_string(
+                preprocessed_img, config="--oem 3 --psm 6 -l eng+ara+fra"
+            )
+
+            detected_lang = detect_language(initial_text)
+
+            page_text = pytesseract.image_to_string(
+                preprocessed_img, config=f"--oem 3 --psm 6 -l {detected_lang}"
+            )
+
+            print(f"Detected language: {detected_lang}")
+        else:
+            print(f"Extracting text directly from page {page_num + 1}...")
+            detected_lang = detect_language(page_text)
+            print(f"Detected language: {detected_lang}")
+
+        text += page_text + "\n\n"
+
+    return text.strip()
 def validate_and_clean_resume_data(resume_data: ResumeData) -> ResumeData:
     # List of common placeholder texts and domains
     placeholder_texts = [
@@ -206,7 +247,7 @@ def validate_and_clean_resume_data(resume_data: ResumeData) -> ResumeData:
 
 
 def parse_resume(pdf_path):
-    resume_text = extract_text_from_pdf(pdf_path)
+    resume_text = extract_text_from_pdf_cloud(pdf_path)
     llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash")
     parser = PydanticOutputParser(pydantic_object=ResumeData)
 
