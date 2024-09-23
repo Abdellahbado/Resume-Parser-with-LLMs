@@ -14,8 +14,6 @@ import cv2
 from deskew import determine_skew
 from langdetect import detect
 from langdetect.lang_detect_exception import LangDetectException
-import easyocr
-
 
 def preprocess_image(image):
     # Convert PIL Image to OpenCV format
